@@ -35,6 +35,28 @@ The generated P4 program parses Ethernet, PTP and
 a parse graph that has the depth of 2 and each node has 2 branches::
 
     p4benchmark --feature parse-complex --depth 2 --fanout 2
+    
+* **Benchmark parse field version 16**
+
+The generated P4 program parses Ethernet,
+PTP and a customized header containing 4 fields and each field is 16-bit wide::
+
+    p4benchmark --feature parse-field16 --fields 4
+
+* **Benchmark parse header version 16**
+
+The generated P4 program parses Ethernet, PTP and
+a customized number of headers each containing a customized number of fields.
+Each field is 16-bit wide::
+
+    p4benchmark --feature parse-header16 --fields 4 --headers 4
+
+* **Benchmark parse complex version 16**
+
+The generated P4 program parses Ethernet, PTP and
+a parse graph that has the depth of 2 and each node has 2 branches::
+
+    p4benchmark --feature parse-complex16 --depth 2 --fanout 2
 
 * **Benchmark action complexity**
 
