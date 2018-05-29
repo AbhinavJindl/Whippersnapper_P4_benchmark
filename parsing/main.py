@@ -7,7 +7,7 @@ from parsing.bm_parser import benchmark_parser_with_header_field
 from parsing.bm_parser import parser_complexity
 
 
-features = ['parse-header', 'parse-field', 'parse-complex' ]
+features = ['parse-header', 'parse-field', 'parse-complex', 'parse-header16', 'parse-field16', 'parse-complex16']
 
 def main():
     parser = argparse.ArgumentParser(description='A programs that generate a'
@@ -33,6 +33,13 @@ def main():
         benchmark_parser_with_header_field(args.fields, do_checksum=args.checksum)
     elif args.feature == 'parse-complex':
         parser_complexity(args.depth, args.fanout)
-
+    elif args.feature == 'parse-header16':
+        benchmark_parser_header(args.headers, args.fields, do_checksum=args.checksum)
+    elif args.feature == 'parse-field16':
+		print("cazz")
+        #benchmark_parser_with_header_field(args.fields, do_checksum=args.checksum)
+    elif args.feature == 'parse-complex16':
+        print("cazzz")
+		#parser_complexity(args.depth, args.fanout)
 if __name__=='__main__':
     main()

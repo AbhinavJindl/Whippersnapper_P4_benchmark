@@ -9,13 +9,16 @@ import argparse
 from parsing.bm_parser import benchmark_parser_header
 from parsing.bm_parser import benchmark_parser_with_header_field
 from parsing.bm_parser import parser_complexity
+from parsing.bm_parser import benchmark_parser_header16
+from parsing.bm_parser import benchmark_parser_with_header_field16
+from parsing.bm_parser import parser_complexity16
 from processing.bm_pipeline import benchmark_pipeline
 from state_access.bm_memory import benchmark_memory
 from packet_modification.bm_modification import benchmark_modification
 from action_complexity.bm_mod_field import benchmark_field_write
 
-
 features = ['parse-header', 'parse-field', 'parse-complex', # Parsing
+			'parse-header16', 'parse-field16', 'parse-complex16', # Parsing p4_16
             'set-field',                                    # Action complexity
             'add-header', 'rm-header',                      # Packet Modification
             'pipeline',                                     # Processing Pipeline
@@ -23,6 +26,7 @@ features = ['parse-header', 'parse-field', 'parse-complex', # Parsing
             ]
 
 def main():
+    k = 0
     parser = argparse.ArgumentParser(description='A programs that generate a'
                             ' P4 program for benchmarking a particular feature')
     parser.add_argument('--feature', choices=features,
@@ -59,6 +63,15 @@ def main():
         benchmark_parser_with_header_field(args.fields, do_checksum=args.checksum)
     elif args.feature == 'parse-complex':
         parser_complexity(args.depth, args.fanout)
+    elif args.feature == 'parse-header16':
+        k = 1
+        benchmark_parser_header16(args.headers, args.fields, do_checksum=args.checksum)
+    elif args.feature == 'parse-field16':
+        k = 1
+        benchmark_parser_with_header_field16(args.fields, do_checksum=args.checksum)
+    elif args.feature == 'parse-complex16':
+        k = 1
+        parser_complexity16(args.depth, args.fanout)
     elif args.feature == 'set-field':
         benchmark_field_write(args.operations, do_checksum=args.checksum)
     elif args.feature == 'add-header':
@@ -76,8 +89,10 @@ def main():
     else:
         parser.print_help()
         sys.exit(0)
-
-    print "Generate files to 'output' directory"
+    if(k == 0):
+        print "Generate files to 'output' directory"
+    else:
+        print "Generate files to 'output_16' directory"
 
 if __name__=='__main__':
     main()

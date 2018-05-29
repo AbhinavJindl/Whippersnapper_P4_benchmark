@@ -28,6 +28,17 @@ def p4_define():
     p4_define = read_template('template/define.txt')
     return p4_define
 
+def p4_define16():
+    """
+    This method returns the constant definitions in P4-16
+
+    :returns:  str -- the code in plain text
+    :raises: None
+
+    """
+    p4_define = read_template('template/actions/define16.txt')
+    return p4_define
+
 def ethernet_header():
     """
     This method returns the Ethernet header definition and its parser
@@ -37,6 +48,16 @@ def ethernet_header():
 
     """
     return read_template('template/headers/ethernet.txt')
+
+def ethernet_header16():
+    """
+    This method returns the Ethernet header definition and its parser
+
+    :returns:  str -- the code in plain text
+    :raises: None
+
+    """
+    return read_template('template/headers/ethernet16.txt')
 
 def ethernet():
     """
@@ -258,6 +279,38 @@ def add_header(header_type_name, field_dec):
     """
     binding = {'header_type_name': header_type_name, 'field_dec': field_dec}
     return read_template('template/headers/generic.txt', binding)
+
+def add_header_field16(field_name, field_width):
+    """
+    This method returns header field declaration
+
+    :param field_name: the name of the field
+    :type field_name: str
+    :param field_width: the size in bit of the field
+    :type field_width: int
+    :returns:  str -- the code in plain text
+    :raises: None
+
+    """
+    return '\tbit<{1}> {0: <8};\n'.format(field_name, field_width)
+
+def add_header16(header_type_name, field_dec):
+    """
+    This method returns a header definition with its fields description
+
+    :param header_type_name: the type name of the header
+    :type header_type_name: str
+    :param field_dec: the field description of the header
+    :type field_dec: str
+    :returns:  str -- the code in plain text
+    :raises: None
+
+    """
+    binding = {'header_type_name': header_type_name, 'field_dec': field_dec}
+    return read_template('template/headers/generic16.txt', binding)
+
+def add_struct_header16(header_type_name, header_name):
+    return '\t@name(".' + header_name + '")\n\t' + header_type_name +  ' ' + header_name + ';\n'
 
 def add_metadata_instance(header_type_name, instance_name):
     """
@@ -498,6 +551,12 @@ def ptp_header():
     This method returns the ptp header definition
     """
     return read_template('template/headers/ptp.txt')
+	
+def ptp_header16():
+    """
+    This method returns the ptp header definition
+    """
+    return read_template('template/headers/ptp16.txt')
 
 def parser_start(next_parser='parse_ethernet'):
     """
@@ -505,3 +564,102 @@ def parser_start(next_parser='parse_ethernet'):
     """
     parser_str = 'parser start { return %s; }\n'  % next_parser
     return parser_str
+
+def parser_start16(next_parser='parse_ethernet'):
+    """
+    This method returns the start of the parser
+    """
+    parser_str = 'parser start { return %s; }\n'  % next_parser
+    return parser_str
+
+def add_parser16(nb_headers):
+    transitions=select_case("16w0x88f7","parse_ptp")
+    transitions+=select_case("\t\t\tdefault","accept")
+    binding={'state_name':"parse_ethernet",'header_name':"ethernet",'field':"etherType",'transitions':transitions}
+    states=read_template("template/parsers/parser_generic16.txt",binding)
+    for i in range(nb_headers):
+        state_name='parser_header_'+str(i)
+        header_name='header_'+str(i)
+        field='field_0'
+        if (i==nb_headers-1):
+            transitions=select_case('default', 'accept')
+        else:
+            next='parser_header_'+str(i+1)
+            transitions=select_case('16w0', 'accept')
+            transitions+=select_case('\t\t\tdefault', next)
+        binding={'state_name':state_name,'header_name':header_name,'field':field,'transitions':transitions}
+        states+=read_template("template/parsers/parser_generic16.txt",binding)
+
+    transitions=select_case('8w1', 'parser_header_0')
+    transitions+=select_case('\t\t\tdefault', 'accept')
+    binding={'state_name':'parse_ptp','header_name':'ptp','field':'reserved2','transitions':transitions}
+    states+=read_template("template/parsers/parser_generic16.txt",binding)
+    states+=read_template("template/parsers/parser_start16.txt",{})
+    binding={'states':states}
+    return read_template("template/parsers/parser16.txt",binding)
+
+def add_ingress_block16(nb_headers,output_dir):
+    control = ''
+    control += 'packet.emit(hdr.ethernet);\n\t\tpacket.emit(hdr.ptp);'
+    for i in range(nb_headers):
+        control += '\n\t\tpacket.emit(hdr.header_%d);' % i
+    binding = {'deparser':control}
+    commands = cli_commands('forward_table')
+    with open ('%s/commands.txt' % output_dir, 'w') as out:
+        out.write(commands)
+    return read_template("template/controls/control16.txt",binding)
+
+def add_parser_complex16(node,depth,fanout):
+    transitions=select_case("16w0x88f7","parse_ptp")
+    transitions+=select_case("\t\t\tdefault","accept")
+    binding={'state_name':"parse_ethernet",'header_name':"ethernet",'field':"etherType",'transitions':transitions}
+    states=read_template("template/parsers/parser_generic16.txt",binding)
+    states+=add_parser_comp16(node,depth,fanout)
+    transitions=''
+    for i in range(fanout):
+        transitions+=select_case('8w'+str(i), 'parser_header_'+str(i))
+    transitions+=select_case('\t\t\tdefault', 'accept')
+    binding={'state_name':'parse_ptp','header_name':'ptp','field':'reserved2','transitions':transitions}
+    states+=read_template("template/parsers/parser_generic16.txt",binding)
+    states+=read_template("template/parsers/parser_start16.txt",{})
+    binding={'states':states}
+    return read_template("template/parsers/parser16.txt",binding)
+
+def add_ingress_block_complex16(node,output_dir):
+    control = ''
+    control += 'packet.emit(hdr.ethernet);\n\t\tpacket.emit(hdr.ptp);'
+    control+=add_ingress_block_comp16(node)
+    binding = {'deparser':control}
+    commands = cli_commands('forward_table')
+    with open ('%s/commands.txt' % output_dir, 'w') as out:
+        out.write(commands)
+    return read_template("template/controls/control16.txt",binding)
+
+def add_ingress_block_comp16(node):
+    control=''
+    if node:
+        for n in node.get_children():
+            header_name = 'header{0}'.format(n.get_node_name())
+            control += '\n\t\tpacket.emit(hdr.%s);' % header_name
+            control+=add_ingress_block_comp16(n)
+    return control
+
+def add_parser_comp16(node,depth,fanout,nodedepth=0):
+    states=''
+    if node:
+        for n in node.get_children():
+            state_name='parser_header{0}'.format(n.get_node_name())
+            header_name='header{0}'.format(n.get_node_name())
+            field='field_0'
+            transitions=''
+            if (nodedepth==depth):
+                transitions=select_case('default', 'accept')
+            else:
+                for i in range(fanout):
+                    next='parser_header{0}_'.format(n.get_node_name())+str(i)
+                    transitions+=select_case('16w'+str(i), next)
+                transitions+=select_case('\t\t\tdefault', 'accept')
+            binding={'state_name':state_name,'header_name':header_name,'field':field,'transitions':transitions}
+            states+=read_template("template/parsers/parser_generic16.txt",binding)
+            states+=add_parser_comp16(n,depth,fanout,nodedepth+1)            
+    return states

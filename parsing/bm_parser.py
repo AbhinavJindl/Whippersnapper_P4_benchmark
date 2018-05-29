@@ -79,6 +79,52 @@ def loop_rec(root, depth, fanout):
         if depth > 0:
             loop_rec(n, depth-1, fanout)
 
+def loop_rec16(root, depth, fanout):
+    for i in range(fanout):
+        node_name = root.get_node_name() + '_%d' % i
+        header_type_name = 'header{0}_t'.format(node_name)
+        header_name = 'header{0}'.format(node_name)
+        parser_state_name = 'parse_header{0}'.format(node_name)
+        select_field = 'field_0'
+        next_states = ''
+        if depth == 0:
+            next_states = select_case('default', 'ingress')
+        else:
+            for j in range(fanout):
+                next_states += select_case(j+1, '{0}_{1}'.format(parser_state_name, j))
+            next_states += select_case('default', 'ingress')
+
+        field_dec = add_header_field('field_0', 16)
+        #code = add_header(header_type_name, field_dec)
+        #code += add_parser(header_type_name, header_name, parser_state_name,
+        #    select_field, next_states)
+
+        n = ParseNode(root, node_name, '')
+
+        root.add_children(n)
+        if depth > 0:
+            loop_rec(n, depth-1, fanout)
+
+def header_dec16(node):
+    program = ''
+    if node:
+        for n in node.get_children():
+            program += add_header16('header{0}_t'.format(n.get_node_name()),'\tbit<16> field_0;')
+            program += header_dec16(n)
+    return program
+
+def struct_header16(node):
+    program = ''
+    if node:
+        for n in node.get_children():
+            header_type_name = 'header{0}_t'.format(n.get_node_name())
+            header_name = 'header{0}'.format(n.get_node_name())
+            program += add_struct_header16(header_type_name, header_name)
+            program += struct_header16(n)
+            
+    return program
+
+
 
 def add_forwarding_table(output_dir, program):
     fwd_tbl = 'forward_table'
@@ -133,6 +179,44 @@ def parser_complexity(depth, fanout):
     get_parser_header_pcap(depth+1, 1, output_dir)
 
     return True
+def parser_complexity16(depth, fanout):
+    """
+    This method adds Ethernet, IPv4, TCP, UDP, and a number of generic headers
+    which follow the UDP header. The UDP destination port 0x9091 is used to
+    identify the generic header
+
+    :param depth: the depth of the parsing graph
+    :type depth: int
+    :param fanout: the number branches for each node
+    :type fanout: int
+    :returns: str -- the header and parser definition
+
+    """
+    program = p4_define16() + ethernet_header16()
+    
+    root = ParseNode()
+    loop_rec16(root, depth, fanout)
+    program+=header_dec16(root)
+    
+    
+    program += ptp_header16()
+    program += 'struct metadata{\n}\n\n'
+    program += 'struct headers{\n'
+    program += add_struct_header16('ethernet_t' , 'ethernet')
+    program+=struct_header16(root)
+    program += add_struct_header16('ptp_t' , 'ptp')
+    
+    program += '}\n\n'
+    program+=add_parser_complex16(root,depth,fanout)
+    output_dir = 'output_16'
+    if not os.path.exists(output_dir):
+       os.makedirs(output_dir)
+    program+=add_ingress_block_complex16(root,output_dir)
+    write_output(output_dir, program)
+    get_parser_header_pcap(depth+1, 1, output_dir)
+
+    return True
+
 
 def add_headers_and_parsers(nb_headers, nb_fields, do_checksum=False):
     """
@@ -179,6 +263,43 @@ def add_headers_and_parsers(nb_headers, nb_fields, do_checksum=False):
                                 'field_0', next_state)
     return program
 
+def add_headers_and_parsers16(nb_headers, nb_fields, do_checksum=False):
+    """
+    This method adds Ethernet, IPv4, TCP, UDP, and a number of generic headers
+    which follow the UDP header. The UDP destination port 0x9091 is used to
+    identify the generic header
+
+    :param nb_headers: the number of generic headers included in the program
+    :type nb_headers: int
+    :param nb_fields: the number of fields (16 bits) in each header
+    :type nb_fields: int
+    :returns: str -- the header and parser definition
+
+    """
+    program = p4_define16() + ethernet_header16()
+    field_dec = ''
+    for i in range(nb_fields):
+        field_dec += add_header_field16('field_%d' % i, 16)
+    for i in range(nb_headers):
+        header_type_name = 'header_%d_t' % i
+        header_name = 'header_%d' % i
+        program += add_header16(header_type_name, field_dec)
+
+    program += ptp_header16() 
+    program += 'struct metadata{\n}\n\n'
+    program += 'struct headers{\n'
+    
+    program += add_struct_header16('ethernet_t' , 'ethernet')
+    for i in range(nb_headers):
+        header_type_name = 'header_%d_t' % i
+        header_name = 'header_%d' % i
+        program += add_struct_header16(header_type_name, header_name)
+    program += add_struct_header16('ptp_t' , 'ptp')
+    
+    program += '}\n\n'
+    program += add_parser16(nb_headers);
+    return program
+
 
 def benchmark_parser_header(nb_headers, nb_fields, do_checksum=False):
     """
@@ -202,6 +323,27 @@ def benchmark_parser_header(nb_headers, nb_fields, do_checksum=False):
 
     return True
 
+def benchmark_parser_header16(nb_headers, nb_fields, do_checksum=False):
+    """
+    This method generate the P4-16 program to benchmark the P4 parser
+
+    :param nb_headers: the number of generic headers included in the program
+    :type nb_headers: int
+    :param nb_fields: the number of fields (16 bits) in each header
+    :type tbl_size: int
+    :returns: bool -- True if there is no error
+
+    """
+    output_dir = 'output_16'
+    if not os.path.exists(output_dir):
+       os.makedirs(output_dir)
+    program  = add_headers_and_parsers16(nb_headers, nb_fields, do_checksum)
+    program += add_ingress_block16(nb_headers , output_dir)
+    write_output(output_dir, program)
+    get_parser_header_pcap(nb_fields, nb_headers, output_dir)
+    generate_pisces_command(output_dir, nb_headers, nb_fields, do_checksum)
+    return True
+	
 def benchmark_parser_with_header_field(nb_fields, do_checksum=False):
     """
     This method generate the P4 program to benchmark the P4 parser
@@ -216,6 +358,26 @@ def benchmark_parser_with_header_field(nb_fields, do_checksum=False):
        os.makedirs(output_dir)
     program  = add_headers_and_parsers(1, nb_fields, do_checksum)
     program = add_forwarding_table(output_dir, program)
+    write_output(output_dir, program)
+    get_parser_field_pcap(nb_fields, output_dir)
+    generate_pisces_command(output_dir, 1, nb_fields)
+
+    return True
+
+def benchmark_parser_with_header_field16(nb_fields, do_checksum=False):
+    """
+    This method generate the P4 program to benchmark the P4 parser
+
+    :param nb_fields: the number of fields (16 bits) in each header
+    :type tbl_size: int
+    :returns: bool -- True if there is no error
+
+    """
+    output_dir = 'output_16'
+    if not os.path.exists(output_dir):
+       os.makedirs(output_dir)
+    program  = add_headers_and_parsers16(1, nb_fields, do_checksum)
+    program += add_ingress_block16(1 , output_dir)
     write_output(output_dir, program)
     get_parser_field_pcap(nb_fields, output_dir)
     generate_pisces_command(output_dir, 1, nb_fields)
